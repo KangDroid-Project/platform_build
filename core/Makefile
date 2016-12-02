@@ -884,7 +884,20 @@ endif
 
 # -----------------------------------------------------------------
 # the ramdisk
+
 ifdef BUILDING_RAMDISK_IMAGE
+BOOT_RAMDISK_COMPRESSOR := $(MINIGZIP)
+RECOVERY_RAMDISK_COMPRESSOR := $(MINIGZIP)
+ifneq ($(LZMA_RAMDISK_TARGETS),)
+  ifneq (,$(findstring boot,$(LZMA_RAMDISK_TARGETS)))
+    BOOT_RAMDISK_COMPRESSOR := lzma -f -c
+  endif
+  ifneq (,$(findstring recovery,$(LZMA_RAMDISK_TARGETS)))
+    RECOVERY_RAMDISK_COMPRESSOR := lzma -f -c
+    TARGET_NOT_USE_GZIP_RECOVERY_RAMDISK := true
+  endif
+endif
+
 INTERNAL_RAMDISK_FILES := $(filter $(TARGET_RAMDISK_OUT)/%, \
 	$(ALL_GENERATED_SOURCES) \
 	$(ALL_DEFAULT_INSTALLED_MODULES))
@@ -907,15 +920,14 @@ BUILT_RAMDISK_TARGET := $(PRODUCT_OUT)/ramdisk.img
 INSTALLED_RAMDISK_TARGET := $(BUILT_RAMDISK_TARGET)
 $(INSTALLED_RAMDISK_TARGET): $(MKBOOTFS) $(INTERNAL_RAMDISK_FILES) $(INSTALLED_FILES_FILE_RAMDISK) | $(MINIGZIP)
 	$(call pretty,"Target ram disk: $@")
-	$(hide) $(MKBOOTFS) -d $(TARGET_OUT) $(TARGET_RAMDISK_OUT) | $(MINIGZIP) > $@
+	$(hide) $(MKBOOTFS) -d $(TARGET_OUT) $(TARGET_RAMDISK_OUT) | $(BOOT_RAMDISK_COMPRESSOR) > $@
 
 .PHONY: ramdisk-nodeps
 ramdisk-nodeps: $(MKBOOTFS) | $(MINIGZIP)
 	@echo "make $@: ignoring dependencies"
-	$(hide) $(MKBOOTFS) -d $(TARGET_OUT) $(TARGET_RAMDISK_OUT) | $(MINIGZIP) > $(INSTALLED_RAMDISK_TARGET)
+	$(hide) $(MKBOOTFS) -d $(TARGET_OUT) $(TARGET_RAMDISK_OUT) | $(BOOT_RAMDISK_COMPRESSOR) > $(INSTALLED_RAMDISK_TARGET)
 
 endif # BUILDING_RAMDISK_IMAGE
-
 
 INSTALLED_BOOTIMAGE_TARGET := $(PRODUCT_OUT)/boot.img
 
@@ -1763,7 +1775,7 @@ endif
 #      (BOARD_INCLUDE_RECOVERY_ACPIO = true).
 
 ifeq (,$(filter true, $(BOARD_USES_FULL_RECOVERY_IMAGE) $(BOARD_USES_RECOVERY_AS_BOOT) \
-  $(BOARD_BUILD_SYSTEM_ROOT_IMAGE) $(BOARD_INCLUDE_RECOVERY_DTBO) $(BOARD_INCLUDE_RECOVERY_ACPIO)))
+  $(BOARD_BUILD_SYSTEM_ROOT_IMAGE) $(BOARD_INCLUDE_RECOVERY_DTBO) $(BOARD_INCLUDE_RECOVERY_ACPIO) $(TARGET_NOT_USE_GZIP_RECOVERY_RAMDISK)))
 # Named '.dat' so we don't attempt to use imgdiff for patching it.
 RECOVERY_RESOURCE_ZIP := $(TARGET_OUT)/etc/recovery-resource.dat
 else
@@ -1899,7 +1911,7 @@ define build-recoveryimage-target
   $(hide) cp $(RECOVERY_INSTALL_OTA_KEYS) $(TARGET_RECOVERY_ROOT_OUT)/system/etc/security/otacerts.zip
   $(hide) ln -sf prop.default $(TARGET_RECOVERY_ROOT_OUT)/default.prop
   $(BOARD_RECOVERY_IMAGE_PREPARE)
-  $(hide) $(MKBOOTFS) -d $(TARGET_OUT) $(TARGET_RECOVERY_ROOT_OUT) | $(MINIGZIP) > $(recovery_ramdisk)
+  $(hide) $(MKBOOTFS) -d $(TARGET_OUT) $(TARGET_RECOVERY_ROOT_OUT) | $(RECOVERY_RAMDISK_COMPRESSOR) > $(recovery_ramdisk)
   $(if $(filter true,$(PRODUCT_SUPPORTS_VBOOT)), \
     $(hide) $(MKBOOTIMG) $(INTERNAL_RECOVERYIMAGE_ARGS) $(INTERNAL_MKBOOTIMG_VERSION_ARGS) $(BOARD_MKBOOTIMG_ARGS) --output $(1).unsigned, \
     $(hide) $(MKBOOTIMG) $(INTERNAL_RECOVERYIMAGE_ARGS) $(INTERNAL_MKBOOTIMG_VERSION_ARGS) $(BOARD_MKBOOTIMG_ARGS) --output $(1) --id > $(RECOVERYIMAGE_ID_FILE))
@@ -2266,6 +2278,9 @@ ifneq (,$(filter true, $(BOARD_BUILD_SYSTEM_ROOT_IMAGE) $(BOARD_INCLUDE_RECOVERY
 diff_tool := $(HOST_OUT_EXECUTABLES)/bsdiff
 else
 diff_tool := $(HOST_OUT_EXECUTABLES)/imgdiff
+endif
+ifeq ($(TARGET_NOT_USE_GZIP_RECOVERY_RAMDISK),true)
+diff_tool := $(HOST_OUT_EXECUTABLES)/bsdiff
 endif
 intermediates := $(call intermediates-dir-for,PACKAGING,recovery_patch)
 RECOVERY_FROM_BOOT_PATCH := $(intermediates)/recovery_from_boot.p
@@ -3972,6 +3987,9 @@ ifneq (,$(filter address, $(SANITIZE_TARGET)))
 endif
 ifeq ($(BOARD_USES_FULL_RECOVERY_IMAGE),true)
 	$(hide) echo "full_recovery_image=true" >> $(zip_root)/META/misc_info.txt
+endif
+ifeq ($(TARGET_NOT_USE_GZIP_RECOVERY_RAMDISK),true)
+	$(hide) echo "no_gzip_recovery_ramdisk=true" >> $(zip_root)/META/misc_info.txt
 endif
 ifeq ($(BOARD_AVB_ENABLE),true)
 	$(hide) echo "avb_enable=true" >> $(zip_root)/META/misc_info.txt
