@@ -167,7 +167,7 @@ ifdef my_bad_module_tags
   ifeq (true,$(LOCAL_UNINSTALLABLE_MODULE))
     $(call pretty-warning,LOCAL_MODULE_TAGS := $(my_bad_module_tags) does not do anything for uninstallable modules)
   endif
-  $(call pretty-error,LOCAL_MODULE_TAGS := $(my_bad_module_tags) is obsolete. See $(CHANGES_URL)#LOCAL_MODULE_TAGS)
+  $(call pretty-warning,LOCAL_MODULE_TAGS := $(my_bad_module_tags) is obsolete. See $(CHANGES_URL)#LOCAL_MODULE_TAGS)
 endif
 
 # Only the tags mentioned in this test are expected to be set by module
